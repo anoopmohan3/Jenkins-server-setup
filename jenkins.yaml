@@ -1,0 +1,184 @@
+---
+- name: Setup Jenkins, Docker, Java, Trivy, AWS CLI, Node.js, Terraform, and kubectl
+  hosts: all
+  become: yes
+  #gather_facts: no
+  tasks:
+    - name: Update apt repository
+      apt:
+        update_cache: yes
+
+    - name: Add Adoptium GPG key
+      apt_key:
+        url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+        state: present
+
+    - name: Add Adoptium repository
+      apt_repository:
+        repo: "deb https://packages.adoptium.net/artifactory/deb {{ ansible_lsb.codename }} main"
+        state: present
+        filename: adoptium
+
+    - name: Install Temurin JDK 17
+      apt:
+        name: temurin-17-jdk
+        state: present
+
+    - name: Check Java version
+      command: /usr/bin/java --version
+      register: java_version
+    
+    - name: Download Jenkins GPG key
+      get_url:
+         url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+         dest: /usr/share/keyrings/jenkins-keyring.asc
+
+    - name: Add Jenkins repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+        state: present
+        filename: jenkins
+
+
+    - name: Install Jenkins
+      apt:
+        name: jenkins
+        state: present
+
+    - name: Start Jenkins
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Add jenkins user to docker group
+      user:
+        name: jenkins
+        groups: docker
+        append: yes
+
+
+    - name: Set Docker socket permissions
+      file:
+        path: /var/run/docker.sock
+        mode: '0777'
+
+    - name: Stop Jenkins service
+      service:
+        name: jenkins
+        state: stopped
+
+    - name: Start Jenkins service
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Read the initialAdminPassword file
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_admin_password
+
+    - name: Print Jenkins Initial Admin Password
+      debug:
+        msg: "Jenkins Initial Admin Password: {{ jenkins_admin_password.stdout }}"
+          
+    - name: Install dependencies for Trivy
+      apt:
+        name:
+          - wget
+          - apt-transport-https
+          - gnupg
+          - lsb-release
+        state: present
+
+    - name: Add Trivy GPG key
+      apt_key:
+        url: https://aquasecurity.github.io/trivy-repo/deb/public.key
+        state: present
+        keyring: /usr/share/keyrings/trivy.gpg
+
+    - name: Add Trivy repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb {{ ansible_lsb.codename }} main"
+        state: present
+        filename: trivy
+
+    - name: Install Trivy
+      apt:
+        name: trivy
+        state: present
+
+    - name: Download AWS CLI
+      get_url:
+        url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+        dest: /tmp/awscliv2.zip
+
+    - name: Install unzip
+      apt:
+        name: unzip
+        state: present
+
+    - name: Unzip AWS CLI
+      unarchive:
+        src: /tmp/awscliv2.zip
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Install AWS CLI
+      command: /tmp/aws/install
+
+    - name: Add NodeSource GPG key
+      apt_key:
+        url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+        state: present
+        keyring: /usr/share/keyrings/nodesource-archive-keyring.gpg
+
+    - name: Add NodeSource repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/nodesource-archive-keyring.gpg] https://deb.nodesource.com/node_16.x {{ ansible_lsb.codename }} main"
+        state: present
+        filename: nodesource
+
+    - name: Install Node.js and npm
+      apt:
+        name: nodejs
+        state: present
+
+    - name: Add HashiCorp GPG key
+      apt_key:
+        url: https://apt.releases.hashicorp.com/gpg
+        state: present
+        keyring: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+    - name: Add HashiCorp repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com {{ ansible_lsb.codename }} main"
+        state: present
+        filename: hashicorp
+
+    - name: Install Terraform
+      apt:
+        name: terraform
+        state: present
+
+    - name: Download kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/{{ lookup('url', 'https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+
+    - name: Check kubectl version
+      command: kubectl version --client
+      register: kubectl_version
+
